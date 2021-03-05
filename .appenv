@@ -1,0 +1,5 @@
+#!/usr/bin/bash
+appenv_name    parsource
+appenv_prepend PATH         "$APPENV_DIR/bin"
+appenv_prepend PYTHONPATH   "$APPENV_DIR/src/py"
+# EOF
