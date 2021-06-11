@@ -48,6 +48,10 @@ class Transform:
 class TreeExtractor(Transform):
     """Extracts a tree from the parse stream."""
 
+    def __init__(self, offsets=True):
+        super().__init__()
+        self.withOffsets = offsets
+
     def reset(self):
         self.value = Node("root")
         self.stack: List[Tuple[Node, str]] = [(self.value, "")]
@@ -93,21 +97,37 @@ class TreeExtractor(Transform):
             if self.currentEvent == ParseEvent.LINE_END:
                 self.pop()
         elif event.type == ParseEvent.STATEMENT_END:
-            self.append(self.node(event, "statement"))
+            # A statement will integrate the any previous sibling of the
+            # current node that is not a statement.
+            prev_statement = next((i for i, n in enumerate(
+                reversed(self.current.children)) if n.name == "statement"), 0)
+            node = self.node(event, "statement")
+            for child in self.current.children[prev_statement:]:
+                node.add(child.detach())
+            self.append(node)
         elif event.type == ParseEvent.BLOCK_END:
             self.pop()
         elif event.type == ParseEvent.QUOTE:
             self.append(self.node(event, "quote", value=event.text))
         elif event.type == ParseEvent.TEXT:
             self.append(self.node(event, "text", value=event.text))
+        elif event.type == ParseEvent.KEYWORD:
+            self.append(self.node(event, "keyword", value=event.text))
+        elif event.type == ParseEvent.OPERATOR_INFIX:
+            self.append(self.node(event, "op-inf", value=event.text))
+        elif event.type == ParseEvent.OPERATOR_SUFFIX:
+            self.append(self.node(event, "op-suf", value=event.text))
+        elif event.type == ParseEvent.OPERATOR_PREFIX:
+            self.append(self.node(event, "op-pre", value=event.text))
         else:
             raise ValueError(f"Unsupported event: {event}")
 
     def node(self, event: ParseEvent, name: str, **attributes: Dict[str, str]):
         """Helper to create nodes and store the parsing offsets."""
         node = Node(name, **attributes)
-        node.setAttribute("start", event.start)
-        node.setAttribute("end", event.end)
+        if self.withOffsets:
+            node.setAttribute("start", event.start)
+            node.setAttribute("end", event.end)
         return node
 
 # -----------------------------------------------------------------------------
@@ -115,7 +135,7 @@ class TreeExtractor(Transform):
 # TREE NORMALIZATION
 #
 # -----------------------------------------------------------------------------
-# NOTE: We can see here how the transformation is really not idea and should
+# NOTE: We can see here how the transformation is really not ideal and should
 # probably be captured differently. On the one hand it's convenient to mutate
 # the tree in-place, on the other hand it makes reasoning about it quite
 # hard.

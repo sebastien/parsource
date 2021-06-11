@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 from parsource.command import run
 run()
 # EOF

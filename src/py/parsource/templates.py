@@ -1,5 +1,5 @@
 import re
-from typing import Match, Optional
+from typing import Match
 
 RE_SPACES = re.compile(r" +")
 RE_SPECIAL = re.compile(r"\\\:\/\?\*\+")
@@ -174,4 +174,4 @@ class Template:
             o += 1
         return root
 
-# EOF
+# EOF - vim: ts=4 sw=4 et

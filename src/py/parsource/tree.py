@@ -2,7 +2,7 @@ from typing import Optional, Any, List, Dict, Union, Iterator, Iterable, Callabl
 import json
 import inspect
 
-# NOTE: This is from TLang
+# NOTE: This module was initially copied from TLang.
 
 # -----------------------------------------------------------------------------
 #
@@ -70,7 +70,7 @@ class Node:
     def previousSibling(self) -> Optional['Node']:
         if not self.parent:
             return None
-        siblings = i = self.parent.children
+        siblings = self.parent.children
         i = siblings.index(self)
         return siblings[i - 1] if i > 0 else None
 
@@ -78,7 +78,7 @@ class Node:
     def nextSibling(self) -> Optional['Node']:
         if not self.parent:
             return None
-        siblings = i = self.parent.children
+        siblings = self.parent.children
         i = siblings.index(self)
         return siblings[i + 1] if i + 1 < len(siblings) else None
 
@@ -159,7 +159,7 @@ class Node:
         children = [_ for _ in node._children]
         if attributes:
             # TODO: We could do a smarter merge
-            for k, v in node.attributes:
+            for k, v in node.attributes.items():
                 if replace or k not in self.attributes:
                     self.attributes[k] = v
         for c in children:
@@ -236,7 +236,8 @@ class Node:
                 self.parent.append(child)
         else:
             for i in range(len(nodes) - 1, -1, -1):
-                self.parent.insert(index, nodes[i])
+                if self.parent:
+                    self.parent.insert(index, nodes[i])
         self.detach()
         return self
 
@@ -264,34 +265,43 @@ class Node:
             res["children"] = [_._asdict() for _ in self._children]
         return res
 
-    def toTDoc(self) -> str:
-        return "\n".join(self.iterLines())
+    def iterXML(self) -> Iterable[str]:
+        stop = False
+        if self.name == "text":
+            if "value" in self.attributes and len(self.attributes) == 1:
+                yield str(self.attributes["value"])
+                stop = True
+            elif not self.attributes:
+                yield ""
+                stop = True
+        if not stop:
+            attributes = " ".join(
+                f"{k}={json.dumps(v) if isinstance(v,str) else json.dumps(json.dumps(v))}" for k, v in self.attributes.items())
+            prefix = f"{self.name}{' ' if attributes else ''}{attributes}"
+            if not self._children:
+                yield f"<{prefix} />"
+            else:
+                yield f"<{prefix}>"
+                for child in self._children:
+                    yield from child.iterXML()
+                yield f"</{self.name}>"
 
     def toXML(self) -> str:
         return "".join(self.iterXML())
 
-    def iterXML(self) -> Iterable[str]:
-        attributes = " ".join(
-            f"{k}={json.dumps(v) if isinstance(v,str) else json.dumps(json.dumps(v))}" for k, v in self.attributes.items())
-        prefix = f"{self.name}{' ' if attributes else ''}{attributes}"
-        if not self._children:
-            yield f"<{prefix} />"
-        else:
-            yield f"<{prefix}>"
-            for child in self._children:
-                yield from child.iterXML()
-            yield f"</{self.name}>"
-
-    def iterLines(self, level=0) -> Iterable[str]:
+    def iterTDoc(self, level=0) -> Iterable[str]:
         attributes = " ".join(f"{k}={repr(v)}" for k,
                               v in self.attributes.items())
         yield f"{self.name or '┐'} {attributes}"
         last_i = len(self.children) - 1
         for i, child in enumerate(self.children):
-            for j, line in enumerate(child.iterLines(level + 1)):
+            for j, line in enumerate(child.iterTDoc(level + 1)):
                 leader = ("└─ " if i == last_i else "├─ ") if j == 0 else (
                     "   " if i == last_i else "│  ")
                 yield leader + line
+
+    def toTDoc(self) -> str:
+        return "\n".join(self.iterTDoc())
 
     def __getitem__(self, index: Union[int, str]):
         if isinstance(index, str):
