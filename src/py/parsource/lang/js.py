@@ -1,5 +1,4 @@
 from ..parser import BlockLanguage, ExpressionLanguage
-import re
 
 
 class JavaScriptBlocks(BlockLanguage):
