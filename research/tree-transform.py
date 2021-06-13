@@ -1,7 +1,7 @@
 import re
 import fnmatch
 from parsource.tree import Node
-from typing import List, Tuple, Optional, Any
+from typing import List, Tuple, Optional, Any, Union, NamedTuple, Dict
 
 # --
 # This is a simple tree-representation parser, so that the output of
@@ -46,6 +46,10 @@ def parse(text):
 #
 # Now we introduce parser combinators to match subsets of a tree.
 
+Match = NamedTuple("Match", [("pattern", 'Pattern'),
+                             ("value", Union[Node, List['Match']]), ("slot", Optional[str])])
+
+
 class Pattern:
 
     def __init__(self):
@@ -69,8 +73,8 @@ class WithName(Pattern):
         super().__init__()
         self.name = name
 
-    def match(self, node: Node) -> Optional[Tuple[Pattern, Node]]:
-        return (self, node) if fnmatch.fnmatch(node.name, self.name) else None
+    def match(self, node: Node) -> Optional[Match]:
+        return Match(self, self.slot, node) if fnmatch.fnmatch(node.name, self.name) else None
 
 
 class PatternOf(Pattern):
@@ -85,17 +89,17 @@ class PatternOf(Pattern):
 
 class SeqOf(PatternOf):
 
-    def match(self, node: Node) -> Optional[Tuple[Pattern, List[Node]]]:
+    def match(self, node: Node) -> Optional[Match]:
         res: List[Node] = []
         cur: Optional[Node] = node
         for pat in self.of:
             if not cur:
                 return None
-            elif not pat.match(cur):
+            elif not (match := pat.match(cur)):
                 return None
-            res.append(cur)
+            res.append(match)
             cur = cur.nextSibling
-        return (self, res)
+        return Match(self, res, self.slot)
 
     def __add__(self, other) -> 'Pattern':
         pat = other if isinstance(other, Pattern) else WithName(other)
@@ -109,10 +113,10 @@ class AnyOf(Pattern):
         super().__init__()
         self.of: List[Pattern] = [_ for _ in patterns]
 
-    def match(self, node: Node) -> Optional[Tuple[Pattern, Node]]:
+    def match(self, node: Node) -> Optional[Match]:
         for pat in self.of:
             if (res := pat.match(node)):
-                return (self, res)
+                return Match(self, res, self.slot)
         return None
 
 # --
@@ -126,7 +130,36 @@ def named(name):
 def find(pattern: Pattern, tree: Node):
     for node in tree.walk():
         if match := pattern.match(node):
-            print("MATCH", match, node)
+            # TODO: Should be a yield
+            return match
+
+
+TSlots = Dict[str, Union[Node, List[Node]]]
+
+
+def slots(match: Match) -> TSlots:
+    slots: TSlots = {}
+
+    def helper(value: Union[Match, Node, List[Union[Match, Node]]], slots: TSlots):
+        if not value:
+            return value
+        if isinstance(value, Node):
+            print("NODE", value)
+            res = value
+        elif isinstance(value, List):
+            print("LIST", value)
+            res = [helper(_, slots) for _ in value]
+        else:
+            print("MATCH", value)
+            # We have a match
+            match = value
+            res = helper(match.value, slots)
+            if (name := match.slot) and name not in slots:
+                slots[name] = res
+        slots["_"] = res
+        return res
+    helper(match, slots)
+    return slots
 
 
 TREE = parse("""
@@ -138,4 +171,6 @@ root
 """)
 Expr = named("text")["left"] + named("op-inf")["op"] + named("text")["right"]
 
-print(find(Expr, TREE))
+match = find(Expr, TREE)
+print(match)
+print(slots(match))
